@@ -29,7 +29,7 @@ async function embedQuestion(question) {
   const response = await cohere.embed({
     texts: [question],
     model: "embed-english-v3.0",
-    inputType: "search_query", // different from indexing! this is a query, not a document
+    inputType: "search_query",
     embeddingTypes: ["float"],
   });
   return response.embeddings.float[0];
@@ -42,12 +42,43 @@ function findTopChunks(questionEmbedding, allChunks, k = 3) {
     score: cosineSimilarity(questionEmbedding, chunk.embedding),
   }));
 
-  scored.sort((a, b) => b.score - a.score); // highest score first
+  scored.sort((a, b) => b.score - a.score);
 
   return scored.slice(0, k);
 }
 
-// Step 4: ask the question, end to end
+// Step 4: build a constrained prompt and generate an answer
+async function generateAnswer(question, topChunks) {
+  const context = topChunks
+    .map(
+      (chunk) =>
+        `File: ${chunk.filePath} (lines ${chunk.startLine}-${chunk.endLine})\n${chunk.text}`
+    )
+    .join("\n\n---\n\n");
+
+  const prompt = `You are answering questions about a codebase using ONLY the code snippets provided below.
+
+Rules:
+- Only use the information in the provided code snippets to answer.
+- If the answer is not clearly present in the snippets, say "I couldn't find enough information in the indexed code to answer this confidently."
+- When you do answer, mention which file(s) your answer is based on.
+
+Code snippets:
+${context}
+
+Question: ${question}
+
+Answer:`;
+
+  const response = await cohere.chat({
+    model: "command-a-03-2025",
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  return response.message.content[0].text;
+}
+
+// Step 5: ask the question, end to end
 async function askQuestion(question) {
   const indexPath = path.join(__dirname, "data", "index.json");
   const allChunks = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
@@ -61,6 +92,10 @@ async function askQuestion(question) {
       `${i + 1}. ${chunk.filePath} (lines ${chunk.startLine}-${chunk.endLine}) — score: ${chunk.score.toFixed(3)}`
     );
   });
+
+  const answer = await generateAnswer(question, topChunks);
+  console.log("\n--- Answer ---");
+  console.log(answer);
 }
 
 // Simple terminal input loop
