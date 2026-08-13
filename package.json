@@ -18,7 +18,7 @@
   "homepage": "https://github.com/bulbul-18/github-knowledge-assistant#readme",
   "description": "",
   "dependencies": {
-    "@google/genai": "^2.15.0",
+    "cohere-ai": "^8.0.0",
     "dotenv": "^17.4.2"
   }
 }
