@@ -56,27 +56,39 @@ function buildAllChunks() {
   return allChunks;
 }
 
-// Get the embedding vector for a single piece of text
-async function getEmbedding(text) {
+// Get embeddings for MULTIPLE texts in a single batched API call
+async function getEmbeddingsBatch(textArray) {
   const response = await cohere.embed({
-    texts: [text],
+    texts: textArray,
     model: "embed-english-v3.0",
     inputType: "search_document",
     embeddingTypes: ["float"],
   });
-  return response.embeddings.float[0];
+  return response.embeddings.float; // array of vectors, one per input text
 }
 
 async function main() {
   const chunks = buildAllChunks();
   console.log(`Total chunks created: ${chunks.length}`);
 
-  // Test embedding just ONE chunk first, before doing all 9
-  const testChunk = chunks[0];
-  const embedding = await getEmbedding(testChunk.text);
+  const allTexts = chunks.map((chunk) => chunk.text);
+  const embeddings = await getEmbeddingsBatch(allTexts);
 
-  console.log(`Embedding length: ${embedding.length}`);
-  console.log(`First 5 numbers:`, embedding.slice(0, 5));
+  // Attach each embedding back to its corresponding chunk
+  const indexedChunks = chunks.map((chunk, i) => ({
+    ...chunk,
+    embedding: embeddings[i],
+  }));
+
+  console.log(`Generated ${indexedChunks.length} embeddings`);
+  console.log(`Each has ${indexedChunks[0].embedding.length} numbers`);
+
+  // Save to disk so we don't have to re-call the API every time
+  fs.writeFileSync(
+    path.join(__dirname, "data", "index.json"),
+    JSON.stringify(indexedChunks, null, 2)
+  );
+  console.log("Saved to poc/data/index.json");
 }
 
 main();
