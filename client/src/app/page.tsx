@@ -1,69 +1,106 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
+  const [repoUrl, setRepoUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const router = useRouter();
+
+  async function handleIndex() {
+    setError("");
+    if (!repoUrl.trim()) {
+      setError("Enter a GitHub repository URL");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("http://localhost:3001/api/index", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoUrl }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Something went wrong while indexing");
+
+      router.push("/chat");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error occurred");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="min-h-screen flex flex-col items-center px-6">
+      <div className="w-full max-w-2xl pt-24 pb-16">
+        <div className="flex items-center gap-2 mb-8">
+          <div className="w-2 h-2 rounded-full bg-git-green" />
+          <span className="font-mono text-xs text-ink-muted tracking-wide">
+            semantic search · grounded answers
+          </span>
+        </div>
+
+        <h1 className="text-4xl font-medium tracking-tight mb-4">
+          Chat with any codebase
+        </h1>
+        <p className="text-ink-muted text-lg mb-10 max-w-md">
+          Paste a repository. Ask questions in plain English. Every answer is
+          traced back to the exact file and line it came from.
+        </p>
+
+        <div className="flex gap-2 mb-2">
+          <input
+            type="text"
+            placeholder="https://github.com/owner/repo"
+            value={repoUrl}
+            onChange={(e) => setRepoUrl(e.target.value)}
+            disabled={loading}
+            className="flex-1 font-mono text-sm bg-surface border border-line rounded-md px-4 py-3 outline-none focus:border-git-green transition-colors"
+          />
+          <button
+            onClick={handleIndex}
+            disabled={loading}
+            className="bg-ink text-paper px-5 py-3 rounded-md text-sm font-medium hover:bg-git-green transition-colors disabled:opacity-50"
+          >
+            {loading ? "Indexing…" : "Index repository"}
+          </button>
+        </div>
+
+        {error && (
+          <p className="text-git-red text-sm mt-2">{error}</p>
+        )}
+        {loading && (
+          <p className="text-ink-muted text-sm mt-2">
+            Fetching files, chunking, and generating embeddings — this can take a minute or two.
           </p>
+        )}
+      </div>
+
+      <div className="w-full max-w-2xl pb-24">
+        <p className="font-mono text-xs text-ink-muted mb-3 tracking-wide">
+          what a grounded answer looks like
+        </p>
+        <div className="bg-surface border border-line rounded-lg p-5">
+          <p className="text-sm mb-4">
+            The user submits credentials via a form, which are validated and
+            authenticated on the server. A JWT token is issued as a cookie on success.
+          </p>
+          <div className="flex items-center gap-3 py-2 border-l-2 border-git-green pl-3">
+            <span className="font-mono text-xs text-ink-muted flex-1">
+              client/src/app/api/auth/login/route.ts
+              <span className="text-ink-muted/60"> · lines 36–63</span>
+            </span>
+            <span className="font-mono text-xs bg-git-amber-light text-git-amber px-2 py-0.5 rounded">
+              0.37
+            </span>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
