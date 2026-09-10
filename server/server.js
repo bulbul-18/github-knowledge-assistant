@@ -6,7 +6,7 @@ const crypto = require("crypto");
 const { parseGitHubUrl, fetchRepoTree, fetchFileContent, shouldIndexFile } = require("./services/github");
 const { chunkFile } = require("./services/chunker");
 const { getEmbeddingsBatch } = require("./services/embeddings");
-const { findTopChunks, generateAnswer } = require("./services/llm");
+const { generateAnswer } = require("./services/llm");
 const prisma = require("./lib/prisma");
 
 const app = express();
@@ -78,15 +78,49 @@ app.post("/api/index", async (req, res) => {
 
 app.post("/api/ask", async (req, res) => {
   try {
-    const { question } = req.body;
+    const { question, repositoryId } = req.body;
     if (!question) {
       return res.status(400).json({ error: "question is required" });
     }
+    if (!repositoryId) {
+      return res.status(400).json({ error: "repositoryId is required" });
+    }
 
     const [questionEmbedding] = await getEmbeddingsBatch([question], "search_query");
+    const embeddingLiteral = `[${questionEmbedding.join(",")}]`;
 
-    // Temporary: still using the old in-memory approach for retrieval — updated in the next step
-    res.status(400).json({ error: "ask endpoint not yet updated for database storage" });
+    const topChunks = await prisma.$queryRaw`
+      SELECT id, "filePath", "startLine", "endLine", text,
+             embedding <=> ${embeddingLiteral}::vector AS distance
+      FROM "Chunk"
+      WHERE "repositoryId" = ${repositoryId}
+      ORDER BY distance ASC
+      LIMIT 3
+    `;
+
+    if (topChunks.length === 0) {
+      return res.status(400).json({ error: "No chunks found for this repository" });
+    }
+
+    const formattedChunks = topChunks.map((c) => ({
+      filePath: c.filePath,
+      startLine: c.startLine,
+      endLine: c.endLine,
+      text: c.text,
+      score: 1 - c.distance,
+    }));
+
+    const answer = await generateAnswer(question, formattedChunks);
+
+    res.json({
+      answer,
+      sources: formattedChunks.map((c) => ({
+        filePath: c.filePath,
+        startLine: c.startLine,
+        endLine: c.endLine,
+        score: c.score,
+      })),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
