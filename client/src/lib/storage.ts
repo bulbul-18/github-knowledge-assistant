@@ -2,6 +2,7 @@ export type Source = { filePath: string; startLine: number; endLine: number; sco
 export type ChatMessage = { question: string; answer: string; sources: Source[] };
 export type ChatSession = {
   id: string;
+  repositoryId: string;
   repoUrl: string;
   repoName: string;
   createdAt: number;
@@ -33,9 +34,10 @@ export function getChats(): ChatSession[] {
 function saveChats(chats: ChatSession[]) {
   localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
 }
-export function createChat(repoUrl: string, repoName: string): ChatSession {
+export function createChat(repositoryId: string, repoUrl: string, repoName: string): ChatSession {
   const newChat: ChatSession = {
     id: crypto.randomUUID(),
+    repositoryId,
     repoUrl,
     repoName,
     createdAt: Date.now(),

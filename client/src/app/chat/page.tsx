@@ -7,6 +7,7 @@ import { getSession, getActiveChatId, getChat, addMessage, ChatMessage } from "@
 
 export default function ChatPage() {
   const [chatId, setChatId] = useState<string | null>(null);
+  const [repositoryId, setRepositoryId] = useState<string | null>(null);
   const [repoName, setRepoName] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [question, setQuestion] = useState("");
@@ -31,13 +32,14 @@ export default function ChatPage() {
       return;
     }
     setChatId(chat.id);
+    setRepositoryId(chat.repositoryId);
     setRepoName(chat.repoName);
     setMessages(chat.messages);
     setChecked(true);
   }, [router]);
 
   async function handleAsk() {
-    if (!chatId) return;
+    if (!chatId || !repositoryId) return;
     setError("");
     if (!question.trim()) return;
 
@@ -46,10 +48,10 @@ export default function ChatPage() {
     setQuestion("");
 
     try {
-      const res = await fetch("http://localhost:3001/api/ask", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: currentQuestion }),
+        body: JSON.stringify({ question: currentQuestion, repositoryId }),
       });
 
       const data = await res.json();

@@ -29,7 +29,7 @@ export default function Home() {
 
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:3001/api/index", {
+       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/index`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ repoUrl }),
@@ -38,7 +38,7 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something went wrong while indexing");
 
-      createChat(repoUrl, data.repo);
+      createChat(data.repositoryId, repoUrl, data.repo);
       router.push("/chat");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error occurred");
