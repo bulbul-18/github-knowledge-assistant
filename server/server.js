@@ -1,19 +1,17 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const crypto = require("crypto");
 
 const { parseGitHubUrl, fetchRepoTree, fetchFileContent, shouldIndexFile } = require("./services/github");
 const { chunkFile } = require("./services/chunker");
 const { getEmbeddingsBatch } = require("./services/embeddings");
 const { findTopChunks, generateAnswer } = require("./services/llm");
+const prisma = require("./lib/prisma");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-// Temporary in-memory storage — one repo at a time, no database yet
-let indexedChunks = [];
-let currentRepo = null;
 
 app.post("/api/index", async (req, res) => {
   try {
@@ -23,7 +21,8 @@ app.post("/api/index", async (req, res) => {
     }
 
     const { owner, repo } = parseGitHubUrl(repoUrl);
-    console.log(`Indexing ${owner}/${repo}...`);
+    const repoName = `${owner}/${repo}`;
+    console.log(`Indexing ${repoName}...`);
 
     // Step 1: get the file tree
     const tree = await fetchRepoTree(owner, repo);
@@ -43,14 +42,34 @@ app.post("/api/index", async (req, res) => {
     }
     console.log(`${allChunks.length} chunks created`);
 
-    // Step 3: embed all chunks in one batch
+    // Step 3: embed all chunks
     const texts = allChunks.map((chunk) => chunk.text);
     const embeddings = await getEmbeddingsBatch(texts, "search_document");
 
-    indexedChunks = allChunks.map((chunk, i) => ({ ...chunk, embedding: embeddings[i] }));
-    currentRepo = `${owner}/${repo}`;
+    // Step 4: find or create the Repository row
+    let repository = await prisma.repository.findFirst({ where: { url: repoUrl } });
+    if (repository) {
+      // Re-indexing: wipe old chunks, keep the repository (and its chat sessions) intact
+      await prisma.chunk.deleteMany({ where: { repositoryId: repository.id } });
+    } else {
+      repository = await prisma.repository.create({
+        data: { url: repoUrl, name: repoName },
+      });
+    }
 
-    res.json({ status: "ready", repo: currentRepo, chunksIndexed: indexedChunks.length });
+    // Step 5: insert chunks with embeddings via raw SQL (pgvector isn't natively supported by Prisma's normal API)
+    for (let i = 0; i < allChunks.length; i++) {
+      const chunk = allChunks[i];
+      const embeddingLiteral = `[${embeddings[i].join(",")}]`;
+      const id = crypto.randomUUID();
+
+      await prisma.$executeRaw`
+        INSERT INTO "Chunk" (id, "repositoryId", "filePath", "startLine", "endLine", text, embedding)
+        VALUES (${id}, ${repository.id}, ${chunk.filePath}, ${chunk.startLine}, ${chunk.endLine}, ${chunk.text}, ${embeddingLiteral}::vector)
+      `;
+    }
+
+    res.json({ status: "ready", repositoryId: repository.id, repo: repoName, chunksIndexed: allChunks.length });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -63,18 +82,11 @@ app.post("/api/ask", async (req, res) => {
     if (!question) {
       return res.status(400).json({ error: "question is required" });
     }
-    if (indexedChunks.length === 0) {
-      return res.status(400).json({ error: "No repository has been indexed yet" });
-    }
 
     const [questionEmbedding] = await getEmbeddingsBatch([question], "search_query");
-    const topChunks = findTopChunks(questionEmbedding, indexedChunks, 3);
-    const answer = await generateAnswer(question, topChunks);
 
-    res.json({
-      answer,
-      sources: topChunks.map((c) => ({ filePath: c.filePath, startLine: c.startLine, endLine: c.endLine, score: c.score })),
-    });
+    // Temporary: still using the old in-memory approach for retrieval — updated in the next step
+    res.status(400).json({ error: "ask endpoint not yet updated for database storage" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
