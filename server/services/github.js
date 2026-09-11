@@ -22,9 +22,14 @@ function parseGitHubUrl(url) {
 }
 
 // Fetch the full file tree for a repo (paths + metadata, no content yet)
+
 async function fetchRepoTree(owner, repo) {
   const url = `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`;
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` },
+  });
+
+
 
   if (!response.ok) {
     throw new Error(`Failed to fetch repo tree: ${response.status} ${response.statusText}`);
@@ -35,9 +40,13 @@ async function fetchRepoTree(owner, repo) {
 }
 
 // Fetch the raw text content of one specific file
+
+
 async function fetchFileContent(owner, repo, filePath) {
   const url = `https://raw.githubusercontent.com/${owner}/${repo}/main/${filePath}`;
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` },
+  });
 
   if (!response.ok) {
     throw new Error(`Failed to fetch file: ${filePath}`);
